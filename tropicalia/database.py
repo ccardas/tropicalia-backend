@@ -11,13 +11,18 @@ class Database:
 
 db = Database()
 
-async def create_db_connection():
+async def create_db_connection() -> Database:
     logger.debug("Connecting to the Database.")
     db.client = aiosqlite.connect(settings.DB_PATH)
 
-async def close_db_connection():
+    return db.client
+
+async def close_db_connection() -> None:
     logger.debug("Closing Database connection")
     db.client.close()
 
-async def get_connection() -> aiosqlite.Connection:
-    return db.client.tropicalia
+async def get_connection() -> Database:
+    if not db.client:
+        logger.debug("Client not connected")
+        await create_db_connection()
+    return db.client

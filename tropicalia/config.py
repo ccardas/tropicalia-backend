@@ -18,7 +18,7 @@ class _Settings(BaseSettings):
     ROOT_PATH=""
 
     # Database settings
-    DB_PATH = ""  
+    DB_PATH = "/home/criscarez/Documents/TFM/tropicalia-backend/db.sqlite3"  
 
 class Config:
     env_file = ".env"
