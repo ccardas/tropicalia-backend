@@ -13,13 +13,12 @@ db = Database()
 
 async def create_db_connection() -> Database:
     logger.debug("Connecting to the Database.")
-    db.client = aiosqlite.connect(settings.DB_PATH)
-
+    db.client = await aiosqlite.connect(settings.DB_PATH)
     return db.client
 
 async def close_db_connection() -> None:
     logger.debug("Closing Database connection")
-    db.client.close()
+    await db.client.close()
 
 async def get_connection() -> Database:
     if not db.client:
