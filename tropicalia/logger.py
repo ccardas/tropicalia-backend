@@ -28,7 +28,7 @@ DEFAULT_LOGGING_CONFIG = {
             "level": "WARN",
             "handlers": ["rotate_file"],
         },
-        "drama": {
+        "tropicalia": {
             "level": "DEBUG",
             "handlers": ["console"],
         },

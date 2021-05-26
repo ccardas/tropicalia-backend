@@ -3,10 +3,12 @@ from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 class User(BaseModel):
     username: str
     fullname: str = None
     email: str
+
 
 class UserCreateRequest(User):
     password: str
@@ -25,6 +27,7 @@ class UserCreateRequest(User):
     @property
     def hashed_password(self) -> str:
         return pwd_context.hash(self.password)
+
 
 class UserInDB(User):
     password: str

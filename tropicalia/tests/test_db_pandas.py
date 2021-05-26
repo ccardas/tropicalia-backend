@@ -1,17 +1,15 @@
-import os 
 import pytest
-#import pandas as pd
+import pandas as pd
 
-from tropicalia.config import settings
-from tropicalia.database import Database, get_connection, close_db_connection
+from tropicalia.database import Database, create_db_connection, close_db_connection
 
 
 @pytest.fixture
-async def setup_database(request) -> Database:
+async def setup_database() -> Database:
     """
     Fixture to set up the database
     """
-    db = await get_connection()
+    db = await create_db_connection(path=":memory:")
     await db.execute(
         """CREATE TABLE IF NOT EXISTS test (
         id_test INTEGER PRIMARY KEY,
@@ -19,15 +17,12 @@ async def setup_database(request) -> Database:
         )
     """
     )
-
-    async def teardown():
-        await close_db_connection()
-        os.remove(settings.DB_PATH)
-        print("Closed DB connection")
-
-    request.addfinalizer(teardown)
-
     yield db
+
+    # TEAR DOWN
+    await close_db_connection()
+    print("Closed DB connection")
+
 
 @pytest.fixture
 async def setup_test_data(setup_database) -> Database:
@@ -35,19 +30,18 @@ async def setup_test_data(setup_database) -> Database:
     Fixture to setup the mock data in the DB
     """
     db = setup_database
-    await db.execute(
-        """INSERT INTO test (
-            id_test,
-            text_test
-        ) VALUES (
-            0,
-            "test"
-        )
-    """
+    records = [(0, "test_0"), (1, "test_1"), (2, "test_2")]
+
+    await db.executemany(
+        """INSERT INTO test 
+        VALUES (?, ?)
+    """,
+        records,
     )
     await db.commit()
 
     yield db
+
 
 @pytest.mark.asyncio
 async def test_db(setup_test_data) -> None:
@@ -55,12 +49,30 @@ async def test_db(setup_test_data) -> None:
     Test to check whether the database, table and rows were correctly created.
     """
     db = setup_test_data
-    res = await db.execute(
+    query_res = await db.execute(
         """SELECT * FROM test
     """
     )
+    res = await query_res.fetchall()
 
-    print(res)
+    assert res[0][0] == 0
+    assert res[0][1] == "test_0"
 
-    assert True
 
+@pytest.mark.asyncio
+async def test_pandas(setup_test_data) -> None:
+    """
+    Test whether pandas reads the table as a DataFrame correctly
+    """
+    db = setup_test_data
+
+    query_res = await db.execute(
+        """SELECT * FROM test
+    """
+    )
+    res = await query_res.fetchall()
+
+    df = pd.DataFrame(res)
+
+    assert len(df) == 3
+    assert len(df.columns) == 2
