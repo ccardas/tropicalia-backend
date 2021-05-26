@@ -29,6 +29,7 @@ requests = "^2.25.1"
 pytest = "^6.2.4"
 pytest-asyncio = "^0.15.1"
 passlib = "^1.7.4"
+python-jose = {extras = ["cryptography"], version = "^3.2.0"}
 
 [tool.poetry.dev-dependencies]
 black = "^21.5b1"

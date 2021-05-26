@@ -20,6 +20,7 @@ class _Settings(BaseSettings):
 
     # Database settings
     DB_PATH = "/home/criscarez/Documents/TFM/tropicalia-backend/tropicalia/db.sqlite3"
+    DB_USER_TABLE = "users"
 
 
 class Config:

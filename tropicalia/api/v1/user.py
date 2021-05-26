@@ -1,9 +1,19 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
-from starlette.status import HTTP_409_CONFLICT
+from fastapi.security import OAuth2PasswordRequestForm
+from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_409_CONFLICT
 
 from tropicalia.database import Database, get_connection
-from tropicalia.models.user import UserCreateRequest, UserInDB
-from tropicalia.auth import get_user_by_email, get_user_by_username
+from tropicalia.models.user import UserCreateRequest, UserInDB, Token
+from tropicalia.auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    authenticate_user,
+    create_access_token,
+    get_user_by_email,
+    get_user_by_username,
+    register_user,
+)
 
 router = APIRouter()
 
@@ -29,8 +39,28 @@ async def register_to_system(user: UserCreateRequest, db: Database = Depends(get
             detail="User already in use",
         )
 
-    await send_mail([user.email])
-    # await send_mail(["pedgm@uma.es"])
-
-    user_in_db = await register_user(db, user)  # User is disabled until email confirmation
+    user_in_db = await register_user(db, user)
     return user_in_db
+
+
+@router.post(
+    "/login",
+    summary="Log-in authentication endpoint",
+    tags=["auth"],
+    response_model=Token,
+)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Database = Depends(get_connection),
+):
+    user = await authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
+    return {"access_token": access_token, "token_type": "bearer"}

@@ -11,9 +11,9 @@ async def setup_database() -> Database:
     """
     db = await create_db_connection(path=":memory:")
     await db.execute(
-        """CREATE TABLE IF NOT EXISTS test (
-        id_test INTEGER PRIMARY KEY,
-        text_test TEXT
+        f"""CREATE TABLE IF NOT EXISTS test (
+            id_test INTEGER PRIMARY KEY,
+            text_test TEXT
         )
     """
     )
@@ -33,7 +33,7 @@ async def setup_test_data(setup_database) -> Database:
     records = [(0, "test_0"), (1, "test_1"), (2, "test_2")]
 
     await db.executemany(
-        """INSERT INTO test 
+        f"""INSERT INTO test 
         VALUES (?, ?)
     """,
         records,
@@ -50,7 +50,7 @@ async def test_db(setup_test_data) -> None:
     """
     db = setup_test_data
     query_res = await db.execute(
-        """SELECT * FROM test
+        f"""SELECT * FROM test
     """
     )
     res = await query_res.fetchall()
@@ -67,7 +67,7 @@ async def test_pandas(setup_test_data) -> None:
     db = setup_test_data
 
     query_res = await db.execute(
-        """SELECT * FROM test
+        f"""SELECT * FROM test
     """
     )
     res = await query_res.fetchall()
