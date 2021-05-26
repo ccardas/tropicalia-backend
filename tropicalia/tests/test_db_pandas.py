@@ -1,18 +1,17 @@
-import pandas as pd
-import asyncio
-from unittest import TestCase
+import os 
+import pytest
+#import pandas as pd
 
-from fastapi import FastAPI, Depends
-from fastapi.testclient import TestClient
-from tropicalia.database import get_connection, close_db_connection
-
-app = FastAPI()
-
-client = TestClient(app)
+from tropicalia.config import settings
+from tropicalia.database import Database, get_connection, close_db_connection
 
 
-@app.get("/table")
-async def create_table(db=Depends(get_connection)) -> None:
+@pytest.fixture
+async def setup_database(request) -> Database:
+    """
+    Fixture to set up the database
+    """
+    db = await get_connection()
     await db.execute(
         """CREATE TABLE IF NOT EXISTS test (
         id_test INTEGER PRIMARY KEY,
@@ -20,11 +19,22 @@ async def create_table(db=Depends(get_connection)) -> None:
         )
     """
     )
-    await db.commit()
-    # await close_db_connection()
 
-@app.get("/insert")
-async def insert_data(db=Depends(get_connection)) -> None:
+    async def teardown():
+        await close_db_connection()
+        os.remove(settings.DB_PATH)
+        print("Closed DB connection")
+
+    request.addfinalizer(teardown)
+
+    yield db
+
+@pytest.fixture
+async def setup_test_data(setup_database) -> Database:
+    """
+    Fixture to setup the mock data in the DB
+    """
+    db = setup_database
     await db.execute(
         """INSERT INTO test (
             id_test,
@@ -35,47 +45,22 @@ async def insert_data(db=Depends(get_connection)) -> None:
         )
     """
     )
-    await db.execute(
+    await db.commit()
+
+    yield db
+
+@pytest.mark.asyncio
+async def test_db(setup_test_data) -> None:
+    """
+    Test to check whether the database, table and rows were correctly created.
+    """
+    db = setup_test_data
+    res = await db.execute(
         """SELECT * FROM test
     """
     )
 
-    """
-    Query result example
-        >>> cur.execute("SELECT * FROM test")
-        <sqlite3.Cursor object at 0x7fae71ddcf10>
-        >>> res = cur.fetchall()
-        >>> res
-        [(0, 'test')]
-        >>> type(res)
-        <class 'list'>
-        >>> res[0]
-        (0, 'test')
-        >>> type(res[0])
-        <class 'tuple'>
-        >>> res[0][1]
-        'test'
-        >>> res[0][0]
-        0
-    """
+    print(res)
 
-    await db.commit()
-    await close_db_connection()
-
-class Tests(TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        return super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        return super().tearDownClass()
-
-    def test_create(self):
-        response = client.get("/table")
-        assert response.status_code == 200
-
-    def test_insert(self):
-        response = client.get("/insert")
-        assert response.status_code == 200
+    assert True
 
