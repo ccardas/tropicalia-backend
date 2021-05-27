@@ -26,13 +26,13 @@ router = APIRouter()
     response_description="User model from database",
 )
 async def register_to_system(user: UserCreateRequest, db: Database = Depends(get_connection)):
-    user_by_email = await get_user_by_email(db, user.email)
+    user_by_email = await get_user_by_email(user.email, db)
     if user_by_email:
         raise HTTPException(
             status_code=HTTP_409_CONFLICT,
             detail="Email already in use",
         )
-    user_by_username = await get_user_by_username(db, user.username)
+    user_by_username = await get_user_by_username(user.username, db)
     if user_by_username:
         raise HTTPException(
             status_code=HTTP_409_CONFLICT,

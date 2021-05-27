@@ -12,7 +12,7 @@ app = FastAPI()
 app.add_event_handler("startup", create_db_connection)
 app.add_event_handler("shutdown", close_db_connection)
 
-# app.include_router(user, prefix="/tropicalia/api/v1/auth")
+app.include_router(user.router, prefix="/api/v1/auth")
 
 
 @app.get("/")

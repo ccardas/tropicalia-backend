@@ -8,7 +8,6 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from tropicalia.database import Database, get_connection
 from tropicalia.models.user import UserInDB, UserCreateRequest
-from tropicalia.config import settings
 
 SECRET_KEY = "b91a61d721b88f7e9fe8618e2e7e604663dc36ced6001d6a157bd391f604e07b"
 ALGORITHM = "HS256"
@@ -22,7 +21,7 @@ async def get_user_by_username(username: str, db: Database = Depends(get_connect
     Checks whether there is a registered user using `username`.
     """
     user = await db.execute(
-        f"""
+        """
         SELECT * FROM users WHERE username = ?
     """,
         username,
@@ -37,8 +36,8 @@ async def get_user_by_email(email: str, db: Database = Depends(get_connection)) 
     Checks whether there is a registered user using `email`.
     """
     user = await db.execute(
-        f"""
-        SELECT * FROM {settings.DB_USER_TABLE} WHERE email = ?
+        """
+        SELECT * FROM users WHERE email = ?
     """,
         email,
     )
@@ -55,7 +54,7 @@ async def register_user(user: UserCreateRequest, db: Database = Depends(get_conn
     user_dict["password"] = user.hashed_password
 
     await db.execute(
-        f"""INSERT INTO {settings.DB_USER_TABLE} 
+        """INSERT INTO users
         VALUES (?, ?, ?)
     """,
         user_dict,
