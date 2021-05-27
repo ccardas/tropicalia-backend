@@ -39,7 +39,7 @@ async def register_to_system(user: UserCreateRequest, db: Database = Depends(get
             detail="User already in use",
         )
 
-    user_in_db = await register_user(db, user)
+    user_in_db = await register_user(user, db)
     return user_in_db
 
 
@@ -53,7 +53,7 @@ async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Database = Depends(get_connection),
 ):
-    user = await authenticate_user(db, form_data.username, form_data.password)
+    user = await authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,

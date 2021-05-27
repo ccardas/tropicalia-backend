@@ -20,30 +20,34 @@ async def get_user_by_username(username: str, db: Database = Depends(get_connect
     """
     Checks whether there is a registered user using `username`.
     """
-    user = await db.execute(
-        """
-        SELECT * FROM users WHERE username = ?
-    """,
-        username,
+    res = await db.execute(
+        f"""
+        SELECT * FROM users WHERE username = '{username}'
+    """
     )
 
+    user = await res.fetchall()
+
+    user_dict = {key: user[0][i] for i, key in enumerate(UserInDB.__fields__.keys())}
     if user:
-        return UserInDB(**dict(user))
+        return UserInDB(**user_dict)
 
 
 async def get_user_by_email(email: str, db: Database = Depends(get_connection)) -> UserInDB:
     """
     Checks whether there is a registered user using `email`.
     """
-    user = await db.execute(
-        """
-        SELECT * FROM users WHERE email = ?
-    """,
-        email,
+    res = await db.execute(
+        f"""
+        SELECT * FROM users WHERE email = '{email}'
+    """
     )
 
+    user = await res.fetchall()
+
+    user_dict = {key: user[0][i] for i, key in enumerate(UserInDB.__fields__.keys())}
     if user:
-        return UserInDB(**dict(user))
+        return UserInDB(**user_dict)
 
 
 async def register_user(user: UserCreateRequest, db: Database = Depends(get_connection)) -> UserInDB:
@@ -53,12 +57,13 @@ async def register_user(user: UserCreateRequest, db: Database = Depends(get_conn
     user_dict = user.dict()
     user_dict["password"] = user.hashed_password
 
-    await db.execute(
-        """INSERT INTO users
-        VALUES (?, ?, ?)
-    """,
-        user_dict,
-    )
+    columns = ", ".join(user_dict.keys())
+    placeholders = ":" + ", :".join(user_dict.keys())
+    query = f"INSERT INTO users ({columns}) VALUES ({placeholders})"
+
+    await db.execute(query, user_dict)
+
+    await db.commit()
 
     return UserInDB(**user_dict)
 
@@ -72,7 +77,7 @@ async def authenticate_user(
     user = await get_user_by_username(username, db)
     if not user:
         return False
-    if not user.verify_password(password, user.hashed_password):
+    if not user.verify_password(password):
         return False
     return user
 
