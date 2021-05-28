@@ -13,10 +13,10 @@ SECRET_KEY = "b91a61d721b88f7e9fe8618e2e7e604663dc36ced6001d6a157bd391f604e07b"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
-async def get_user_by_username(username: str, db: Database = Depends(get_connection)) -> UserInDB:
+async def get_user_by_username(username: str, db: Database) -> UserInDB:
     """
     Checks whether there is a registered user using `username`.
     """
@@ -33,7 +33,7 @@ async def get_user_by_username(username: str, db: Database = Depends(get_connect
         return UserInDB(**user_dict)
 
 
-async def get_user_by_email(email: str, db: Database = Depends(get_connection)) -> UserInDB:
+async def get_user_by_email(email: str, db: Database) -> UserInDB:
     """
     Checks whether there is a registered user using `email`.
     """
@@ -50,7 +50,7 @@ async def get_user_by_email(email: str, db: Database = Depends(get_connection)) 
         return UserInDB(**user_dict)
 
 
-async def register_user(user: UserCreateRequest, db: Database = Depends(get_connection)) -> UserInDB:
+async def register_user(user: UserCreateRequest, db: Database) -> UserInDB:
     """
     Inserts the registered user into the database.
     """
@@ -68,9 +68,7 @@ async def register_user(user: UserCreateRequest, db: Database = Depends(get_conn
     return UserInDB(**user_dict)
 
 
-async def authenticate_user(
-    username: str, password: str, db: Database = Depends(get_connection)
-) -> Union[UserInDB, bool]:
+async def authenticate_user(username: str, password: str, db: Database) -> Union[UserInDB, bool]:
     """
     Checks whether the user's credentials are correct and is then authentified.
     """
@@ -100,7 +98,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Database = Depends(get_connection)) -> UserInDB:
     """
     Get current user based on JWT.
     """
@@ -117,7 +115,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
     except JWTError:
         raise credentials_exception
 
-    user = await get_user_by_username(username=username)
+    user = await get_user_by_username(username, db)
     if user is None:
         raise credentials_exception
 
