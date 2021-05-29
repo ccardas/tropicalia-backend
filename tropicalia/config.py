@@ -21,15 +21,24 @@ class _Settings(BaseSettings):
     # Database settings
     DB_PATH = str(Path.home()) + "/.tropicalia/db.sqlite3"
 
+    # DFS
+    MINIO_HOST: str = "localhost"
+    MINIO_PORT: int = 9000
+    MINIO_ACCESS_KEY: str = "minio"
+    MINIO_SECRET_KEY: str = "minio"
 
-class Config:
-    env_file = ".env"
-    file_path = Path(env_file)
-    if not file_path.is_file():
-        logger.warning("⚠️ `.env` not found in current directory")
-        logger.info("⚙️ Loading settings from environment")
-    else:
-        logger.info(f"⚙️ Loading settings from dotenv @ {file_path.absolute()}")
+    @property
+    def MINIO_CONN(self):
+        return f"{self.MINIO_HOST}:{self.MINIO_PORT}"
+
+    class Config:
+        env_file = ".env"
+        file_path = Path(env_file)
+        if not file_path.is_file():
+            logger.warning("⚠️ `.env` not found in current directory")
+            logger.info("⚙️ Loading settings from environment")
+        else:
+            logger.info(f"⚙️ Loading settings from dotenv @ {file_path.absolute()}")
 
 
 settings = _Settings()
