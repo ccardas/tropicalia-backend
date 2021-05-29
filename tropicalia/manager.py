@@ -1,8 +1,29 @@
+import pandas as pd
+from fastapi.encoders import jsonable_encoder
+from pydantic.main import BaseModel
+
+from tropicalia.algorithm import AlgorithmStack, MLAlgorithm
 from tropicalia.database import Database
 from tropicalia.logger import get_logger
-from tropicalia.models.dataset import Dataset, DatasetRow
+from tropicalia.models.dataset import Algorithm, Dataset, DatasetRow
+from tropicalia.storage.backend.minio import MinIOStorage
 
 logger = get_logger(__name__)
+
+
+async def execute(query: str, model: BaseModel, db: Database) -> BaseModel:
+    """
+    Given the database it executes the specified query and returns the result.
+    Only for single-row involving queries.
+    """
+    res = await db.execute(query)
+    row = await res.fetchall()
+
+    await db.commit()
+
+    if row:
+        row_dict = {key: row[0][t] for t, key in enumerate(model.__fields__.keys())}
+        return model(**row_dict)
 
 
 class DatasetManager:
@@ -53,7 +74,7 @@ class DatasetManager:
                 VALUES ({row.uid}, '{row.date}', '{row.crop_type}', '{row.yield_values}')
             """
 
-        await self.execute(query, DatasetRow, db)
+        await execute(query, DatasetRow, db)
 
         row_in_db = await self.find_one(row.uid, db)
 
@@ -73,7 +94,7 @@ class DatasetManager:
                 DELETE FROM dataset
                 WHERE uid = {row.uid}
             """
-            await self.execute(query, DatasetRow, db)
+            await execute(query, DatasetRow, db)
 
             row_in_db = await self.find_one(row.uid, db)
 
@@ -87,20 +108,75 @@ class DatasetManager:
         query = f"""
             SELECT * FROM dataset WHERE uid = {uid}
         """
-        row = await self.execute(query, DatasetRow, db)
+        row = await execute(query, DatasetRow, db)
 
         return row
 
-    async def execute(self, query: str, model: DatasetRow, db: Database) -> DatasetRow:
-        """
-        Given the database it executes the specified query and returns the involved DatasetRow model.
-        Only for single-row altering queries.
-        """
-        res = await db.execute(query)
-        row = await res.fetchall()
 
-        await db.commit()
+class AlgorithmManager:
+    """
+    Class implementing the user's interaction with the algorithms
+    """
 
-        if row:
-            row_dict = {key: row[0][t] for t, key in enumerate(model.__fields__.keys())}
-            return model(**row_dict)
+    minio = MinIOStorage()
+
+    async def train(self, algorithm: str, crop_type: str, current_user: str, db: Database):
+        """
+        Given a crop type, it trains the algorithm for the according data.
+        It stores the pickled trained algorithm's object into MinIO to reuse it for predictions.
+        """
+        # TODO
+        # A trained algorithm object is pickled and then stored in MinIO.
+        # Its filename is a random string which is stored and referenced in the DB.
+
+        dataset = DatasetManager().get(crop_type, current_user, db)
+        df = pd.DataFrame(jsonable_encoder(dataset))
+
+        logger.debug(f"User {current_user} has requested a trained {algorithm}/{crop_type} from the DB")
+
+    async def predict(self, algorithm: str, crop_type: str, is_monthly: bool, current_user: str, db: Database):
+        """
+        Loads the trained algorithm for the given crop and performs a prediction.
+        """
+        # TODO
+        # Accessing the DB and querying for a specific algorithm and crop type should
+        # return (if trained) the ID for the object stored in MinIO.
+        # If the chosen combination (algorithm/crop_type) has not been trained before,
+        # an error should be raised and let know the user it must be trained.
+        logger.debug(f"User {current_user} has requested a prediction with {algorithm}/{crop_type}")
+
+        query = f"""
+            SELECT uid, algorithm, crop_type, date
+            FROM algorithm
+            WHERE algorithm = '{algorithm}' AND crop_type = '{crop_type}'
+        """
+
+        trained_alg = await execute(query, Algorithm, db)
+
+        try:
+            alg_obj = self.minio.get_file(trained_alg.uid)
+        except Exception as err:
+            logger.debug(f"Trained algorithm {algorithm} for crop {crop_type} was not found.")
+            logger.debug(err)
+
+        dataset = DatasetManager().get(crop_type, current_user, db)
+        df = pd.DataFrame(jsonable_encoder(dataset))
+
+        alg = self.get_ml_algorithm(algorithm)
+        prediction = alg.predict(df, alg_obj)
+
+        # TODO
+        # Return pandas series object as a Dataset??? pydantic object.
+
+    def get_ml_algorithm(self, algorithm: str) -> MLAlgorithm:
+        """
+        Given an algorithm name, returns an object of the class of the algorithm.
+
+        Returns a MLAlgorithm class.
+        """
+        if algorithm == "SARIMA":
+            return AlgorithmStack.SARIMA
+        elif algorithm == "Prophet":
+            return AlgorithmStack.Prophet
+        else:
+            return

@@ -81,7 +81,7 @@ class MinIOStorage(Storage):
         if not data_file.startswith("minio://"):
             raise NotValidScheme("Object file prefix is invalid: expected `minio://`")
 
-        bucket_name, object_name = data_file[len("minio://"):].split("/", 1)
+        bucket_name, object_name = data_file[len("minio://") :].split("/", 1)
 
         file_path = Path(self.temp_dir, bucket_name, object_name)
         file_path.parents[0].mkdir(parents=True, exist_ok=True)

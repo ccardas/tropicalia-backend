@@ -150,7 +150,7 @@ class SARIMA(MLAlgorithm):
                 if aic < best_score:
                     best_score, best_cfg = aic, [order, s_order]
             except Exception as err:
-                logger.debug("SARIMA config ", config, " has raised an error.")
+                logger.debug(f"SARIMA config {config} has raised an error.")
                 logger.debug(err)
                 continue
 
