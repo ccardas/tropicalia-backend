@@ -1,5 +1,6 @@
+import platform
+import tempfile
 from pathlib import Path
-
 from pydantic import BaseSettings
 
 from tropicalia.logger import get_logger
@@ -26,6 +27,8 @@ class _Settings(BaseSettings):
     MINIO_PORT: int = 9000
     MINIO_ACCESS_KEY: str = "minio"
     MINIO_SECRET_KEY: str = "minio"
+
+    DATA_DIR: str = str(Path("/tmp" if platform.system() == "Darwin" else tempfile.gettempdir()))
 
     @property
     def MINIO_CONN(self):
