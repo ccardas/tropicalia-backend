@@ -19,7 +19,7 @@ class _Settings(BaseSettings):
     ROOT_PATH = ""
 
     # Database settings
-    DB_PATH = "/home/cris/Documents/TFM/backend/tropicalia/db.sqlite3"
+    DB_PATH = str(Path.home()) + "/.tropicalia/db.sqlite3"
 
 
 class Config:
