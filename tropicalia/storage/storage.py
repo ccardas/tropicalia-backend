@@ -41,6 +41,7 @@ class Storage(ABC):
         self.temp_dir = settings.DATA_DIR
         self.local_dir = Path(self.temp_dir, self.bucket_name, self.folder_name)
 
+    @abstractmethod
     def setup(self) -> LocalResource:
         """
         Setup directory tree.

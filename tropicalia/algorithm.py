@@ -209,7 +209,7 @@ class Prophet(MLAlgorithm):
         """
         future = ml_model.make_future_dataframe(periods=12, freq="MS")
         prediction = ml_model.predict(future)
-        prediction = prediction.set_index(["ds"])[-48:-12]["yhat"]
+        prediction = prediction[-48:-12][["ds", "yhat"]]
 
         return prediction
 
@@ -223,8 +223,7 @@ class Prophet(MLAlgorithm):
         """
         future = ml_model.make_future_dataframe(periods=12, freq="MS")
         prediction = ml_model.predict(future)
-        prediction = prediction.set_index(["ds"])[-12:]
-        forecast = prediction["yhat"]
+        forecast = prediction[-12:][["ds", "yhat"]]
 
         if is_monthly:
             return (df["yield_values"].iloc[-12], forecast[[0]])

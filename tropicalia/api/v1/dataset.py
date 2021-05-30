@@ -54,7 +54,7 @@ async def upsert(
     return upsert_row
 
 
-@router.post(
+@router.delete(
     "/data/delete",
     summary="Delete row from DB",
     tags=["data"],

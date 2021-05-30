@@ -1,7 +1,7 @@
 import json
-import shutil
+from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Union
 
 from filelock import FileLock
 from minio import Minio
@@ -19,17 +19,17 @@ class MinIOResource(Resource):
 
 
 class MinIOStorage(Storage):
-    def __init__(self, bucket_name: str, folder_name: str):
-        super().__init__(bucket_name, folder_name)
+    def __init__(self, bucket_name: str = "algorithm"):
+        super().__init__(bucket_name, folder_name="")
         self.client = Minio(
             settings.MINIO_CONN,
             access_key=settings.MINIO_ACCESS_KEY,
             secret_key=settings.MINIO_SECRET_KEY,
             secure=False,
         )
+        self.setup()
 
     def setup(self) -> MinIOResource:
-        super().setup()
 
         policy_read_only = {
             "Version": "2012-10-17",
@@ -53,35 +53,32 @@ class MinIOStorage(Storage):
 
         return MinIOResource(resource=f"minio://{self.bucket_name}/")
 
-    def put_file(self, file_path: Union[str, Path], rename: Optional[str] = None) -> MinIOResource:
-        if isinstance(file_path, Path):
-            file_path = str(file_path)
-
-        file_name = Path(file_path).name if not rename else rename
-
-        if not file_path.startswith(str(self.local_dir)):
-            file_path = shutil.copy(file_path, Path(self.local_dir, file_name))
-
-        object_name = str(Path(self.folder_name, file_name))
+    def put_file(self, folder_name: Union[str, Path], file_name: str, data) -> MinIOResource:
+        """
+        Given a folder name, the desired file name and the data object in Bytes,
+        the object is uploaded to MinIO.
+        """
+        object_name = str(Path(str(folder_name), str(file_name)))
 
         try:
-            self.client.fput_object(
-                bucket_name=self.bucket_name,
-                object_name=object_name,
-                file_path=file_path,
+            self.client.put_object(
+                bucket_name=self.bucket_name, object_name=object_name, data=BytesIO(data), length=len(data)
             )
         except S3Error as err:
             logger.error(f"Could not upload file {object_name} to {self.bucket_name}")
             logger.exception(err)
             raise
 
-        return MinIOResource(resource=f"minio://{self.bucket_name}/{self.folder_name}/{file_name}")
+        return MinIOResource(resource=f"minio://{self.bucket_name}/{folder_name}/{file_name}")
 
     def get_file(self, data_file: str) -> str:
+        """
+        Given a MinIO path scheme it returns the local path for the downloaded file
+        """
         if not data_file.startswith("minio://"):
             raise NotValidScheme("Object file prefix is invalid: expected `minio://`")
 
-        bucket_name, object_name = data_file[len("minio://") :].split("/", 1)
+        bucket_name, object_name = data_file[len("minio://"):].split("/", 1)
 
         file_path = Path(self.temp_dir, bucket_name, object_name)
         file_path.parents[0].mkdir(parents=True, exist_ok=True)
@@ -105,3 +102,9 @@ class MinIOStorage(Storage):
     def remove_remote_dir(self, omit_files: List[str] = None) -> None:
         # TODO
         pass
+
+    def get_url(self, folder_name: Union[str, Path], file_name: str) -> MinIOResource:
+        """
+        From a folder name and a filename, returns the according MinIOResource object.
+        """
+        return MinIOResource(resource=f"minio://{self.bucket_name}/{folder_name}/{file_name}")

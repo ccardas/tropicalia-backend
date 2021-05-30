@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from tropicalia.database import close_db_connection, create_db_connection
 from tropicalia.config import settings
-from tropicalia.api.v1 import user, dataset
+from tropicalia.api.v1 import user, dataset, algorithm
 
 app = FastAPI()
 
@@ -14,6 +14,7 @@ app.add_event_handler("shutdown", close_db_connection)
 
 app.include_router(user.router, prefix="/api/v1/auth")
 app.include_router(dataset.router, prefix="/api/v1/data")
+app.include_router(algorithm.router, prefix="/api/v1/algorithm")
 
 
 @app.get("/")

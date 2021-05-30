@@ -1,25 +1,59 @@
 import pandas as pd
 from fastapi.encoders import jsonable_encoder
 from pydantic.main import BaseModel
+from pandas import DataFrame
 
-from tropicalia.algorithm import AlgorithmStack, MLAlgorithm
+import pickle
+from datetime import datetime
+
+from tropicalia.algorithm import AlgorithmStack, MLAlgorithm, Prophet, SARIMA
 from tropicalia.database import Database
 from tropicalia.logger import get_logger
-from tropicalia.models.dataset import Algorithm, Dataset, DatasetRow
+from tropicalia.models.algorithm import Algorithm, AlgorithmPrediction
+from tropicalia.models.dataset import Dataset, DatasetRow
 from tropicalia.storage.backend.minio import MinIOStorage
 
 logger = get_logger(__name__)
 
 
-async def execute(query: str, model: BaseModel, db: Database) -> BaseModel:
+async def execute(query: str, model: BaseModel, db: Database, commit: bool = True) -> BaseModel:
     """
     Given the database it executes the specified query and returns the result.
     Only for single-row involving queries.
     """
-    res = await db.execute(query)
-    row = await res.fetchall()
+    try:
+        res = await db.execute(query)
+        row = await res.fetchall()
+    except Exception as err:
+        logger.debug(err)
+        row = None
 
-    await db.commit()
+    if commit:
+        await db.commit()
+
+    if row:
+        row_dict = {key: row[0][t] for t, key in enumerate(model.__fields__.keys())}
+        return model(**row_dict)
+
+
+async def execute_upsert(query: str, res_query: str, model: BaseModel, db: Database, commit: bool = True) -> BaseModel:
+    """
+    Given the database it executes the query and returns the inserted/updated row.
+    """
+    try:
+        cur = await db.cursor()
+        await cur.execute(query)
+        last_rowid = cur.lastrowid
+        res_query = res_query.replace("placeholder", str(last_rowid))
+        res = await cur.execute(res_query)
+        row = await res.fetchall()
+        await cur.close()
+    except Exception as err:
+        logger.debug(err)
+        row = None
+
+    if commit:
+        await db.commit()
 
     if row:
         row_dict = {key: row[0][t] for t, key in enumerate(model.__fields__.keys())}
@@ -70,13 +104,17 @@ class DatasetManager:
             """
         else:
             query = f"""
-                INSERT INTO dataset (uid, date, crop_type, yield_values)
-                VALUES ({row.uid}, '{row.date}', '{row.crop_type}', '{row.yield_values}')
+                INSERT INTO dataset (date, crop_type, yield_values)
+                VALUES ('{row.date}', '{row.crop_type}', '{row.yield_values}')
             """
 
-        await execute(query, DatasetRow, db)
+        res_query = f"""
+            SELECT * FROM dataset WHERE uid = 'placeholder'
+        """
+        res = await execute_upsert(query, res_query, DatasetRow, db)
 
-        row_in_db = await self.find_one(row.uid, db)
+        row_in_db = await self.find_one(res.uid, db)
+        row.uid = row_in_db.uid
 
         if row_in_db == row:
             return row_in_db
@@ -105,11 +143,16 @@ class DatasetManager:
         """
         Find a dataset entry in the database given its id.
         """
+        if not uid:
+            uid = -1
+
         query = f"""
             SELECT * FROM dataset WHERE uid = {uid}
         """
+        print(query)
         row = await execute(query, DatasetRow, db)
 
+        print("HE ENCONTRADO ESTO!!     ", row)
         return row
 
 
@@ -120,21 +163,29 @@ class AlgorithmManager:
 
     minio = MinIOStorage()
 
-    async def train(self, algorithm: str, crop_type: str, current_user: str, db: Database):
+    async def train(self, algorithm: str, crop_type: str, current_user: str, db: Database) -> Algorithm:
         """
         Given a crop type, it trains the algorithm for the according data.
         It stores the pickled trained algorithm's object into MinIO to reuse it for predictions.
         """
-        # TODO
-        # A trained algorithm object is pickled and then stored in MinIO.
-        # Its filename is a random string which is stored and referenced in the DB.
-
-        dataset = DatasetManager().get(crop_type, current_user, db)
-        df = pd.DataFrame(jsonable_encoder(dataset))
+        dataset = await DatasetManager().get(crop_type, current_user, db)
+        df = pd.DataFrame(jsonable_encoder(dataset.data))
 
         logger.debug(f"User {current_user} has requested a trained {algorithm}/{crop_type} from the DB")
 
-    async def predict(self, algorithm: str, crop_type: str, is_monthly: bool, current_user: str, db: Database):
+        alg = self.get_ml_algorithm(algorithm)
+        trained_alg = alg().train(df)
+        last_date = datetime.strptime(df["date"].iloc[-1], "%Y-%m-%d").date()
+        alg_obj = pickle.dumps(trained_alg)
+
+        row_in_db = await self.insert_algorithm(algorithm, crop_type, last_date, alg_obj, db)
+
+        if row_in_db:
+            return row_in_db
+
+    async def predict(
+        self, algorithm: str, crop_type: str, is_monthly: bool, current_user: str, db: Database
+    ) -> AlgorithmPrediction:
         """
         Loads the trained algorithm for the given crop and performs a prediction.
         """
@@ -146,27 +197,35 @@ class AlgorithmManager:
         logger.debug(f"User {current_user} has requested a prediction with {algorithm}/{crop_type}")
 
         query = f"""
-            SELECT uid, algorithm, crop_type, date
+            SELECT uid, algorithm, crop_type, last_date
             FROM algorithm
             WHERE algorithm = '{algorithm}' AND crop_type = '{crop_type}'
+            ORDER BY uid DESC
+            LIMIT 1
         """
-
         trained_alg = await execute(query, Algorithm, db)
 
         try:
-            alg_obj = self.minio.get_file(trained_alg.uid)
+            dfs_path = self.minio.get_url(trained_alg.last_date, trained_alg.uid)
+            alg_path = self.minio.get_file(dfs_path.resource)
+            with open(alg_path, mode="rb") as file:
+                b_obj = file.read()
+                alg_obj = pickle.loads(b_obj)
         except Exception as err:
             logger.debug(f"Trained algorithm {algorithm} for crop {crop_type} was not found.")
             logger.debug(err)
+            return
 
-        dataset = DatasetManager().get(crop_type, current_user, db)
-        df = pd.DataFrame(jsonable_encoder(dataset))
+        dataset = await DatasetManager().get(crop_type, current_user, db)
+        df = pd.DataFrame(jsonable_encoder(dataset.data))
 
         alg = self.get_ml_algorithm(algorithm)
-        prediction = alg.predict(df, alg_obj)
+        pred = alg().predict(df, alg_obj)
 
-        # TODO
-        # Return pandas series object as a Dataset??? pydantic object.
+        data = self.df_to_model(pred, trained_alg)
+
+        if data:
+            return data
 
     def get_ml_algorithm(self, algorithm: str) -> MLAlgorithm:
         """
@@ -174,9 +233,60 @@ class AlgorithmManager:
 
         Returns a MLAlgorithm class.
         """
-        if algorithm == "SARIMA":
-            return AlgorithmStack.SARIMA
-        elif algorithm == "Prophet":
-            return AlgorithmStack.Prophet
+        if algorithm == AlgorithmStack.SARIMA.value:
+            return SARIMA
+        elif algorithm == AlgorithmStack.Prophet.value:
+            return Prophet
         else:
             return
+
+    def df_to_model(self, pred: DataFrame, algorithm: Algorithm) -> AlgorithmPrediction:
+        """
+        Given a pandas DataFrame, the algorithm, crop type and last date, it builds
+        the pydantic `AlgorithmPrediction` model.
+        """
+        data = []
+        pred_len = len(pred)
+        for i in range(pred_len):
+            date, yield_values = pred.iloc[i].values
+            data.append(DatasetRow(date=date, crop_type=algorithm.crop_type, yield_values=yield_values))
+
+        prediction = Dataset(data=data)
+
+        return AlgorithmPrediction(
+            uid=algorithm.uid,
+            algorithm=algorithm.algorithm,
+            crop_type=algorithm.crop_type,
+            last_date=algorithm.last_date,
+            prediction=prediction,
+        )
+
+    async def insert_algorithm(
+        self, algorithm: str, crop_type: str, last_date: datetime, alg_obj, db: Database
+    ) -> Algorithm:
+        """
+        Auxiliar method to insert a new algorithm's info in the DB and to upload the object to MinIO
+        """
+        query = f"""
+            INSERT INTO algorithm (algorithm, crop_type, last_date)
+            VALUES ('{algorithm}', '{crop_type}', '{last_date}')
+        """
+
+        res_query = f"""
+            SELECT * FROM algorithm WHERE uid = 'placeholder'
+        """
+
+        row_in_db = await execute_upsert(query, res_query, Algorithm, db, commit=False)
+
+        resource = self.minio.put_file(folder_name=row_in_db.last_date, file_name=row_in_db.uid, data=alg_obj)
+        if resource:
+            logger.debug(f"Algorithm {row_in_db.uid} has been succesfully uploaded, with path {resource.scheme}")
+            db.commit()
+            return row_in_db
+
+    async def delete_algorithm(self):
+        """
+        Auxiliar method to delete records for an algorithm both from DB and MinIO
+        """
+
+        # TODO

@@ -50,6 +50,7 @@ dmypy.json
 
 # DB
 *.sqlite3
+populate_db.py
 
 # Pre-commit
 .pre-commit-config.yaml

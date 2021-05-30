@@ -1,10 +1,10 @@
 from datetime import date
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
 
 class DatasetRow(BaseModel):
-    uid: int
+    uid: Optional[int] = None
     date: date
     crop_type: str
     yield_values: float
