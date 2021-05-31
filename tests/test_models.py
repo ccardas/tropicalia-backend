@@ -20,12 +20,13 @@ _algorithm_prediction = {
     "algorithm": "ARIMA",
     "crop_type": "Mango",
     "last_date": "2000-01-01",
+    "last_year": _dataset,
     "prediction": _dataset,
+    "forecast": _dataset,
 }
 
 
 def test_valid_structure_users():
-    print(_dataset_row)
     UserInDB(**_user)
     DatasetRow(**_dataset_row)
     Dataset(**_dataset)

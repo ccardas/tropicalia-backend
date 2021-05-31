@@ -6,13 +6,15 @@ from itertools import product
 from typing import List
 
 import pandas as pd
-from pandas import DataFrame, Series
+from pandas import DataFrame
 from fbprophet import Prophet as pr
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 from tropicalia.logger import get_logger
 
 logger = get_logger(__name__)
+warnings.simplefilter("ignore", ConvergenceWarning)
 
 
 class AlgorithmStack(Enum):
@@ -32,10 +34,10 @@ class MLAlgorithm:
     def train(self, df: DataFrame) -> MLAlgorithm:
         pass
 
-    def predict(self, df: DataFrame) -> Series:
+    def predict(self, df: DataFrame) -> DataFrame:
         pass
 
-    def forecast(self, df: DataFrame) -> tuple(Series, Series):
+    def forecast(self, df: DataFrame) -> tuple(DataFrame, DataFrame):
         pass
 
 
@@ -50,50 +52,45 @@ class SARIMA(MLAlgorithm):
 
         Returns the fitted model.
         """
-        configs = self.sarima_configs()
+        configs = self.configs()
         best_config = self.evaluate_models(df, configs)
-        fit_model = self.sarima_fit(df, best_config)
+        fit_model = self.fit(df, best_config)
 
         return fit_model
 
-    def predict(self, df: DataFrame, ml_model) -> Series:
+    def predict(self, df: DataFrame, ml_model) -> DataFrame:
         """
         Given a fitted model and the data, it performs a prediction to obtain validation data
         for the last 3 years of harvesting.
 
         - ml_model: A statsmodels SARIMA fitted model.
 
-        Returns a pandas series of validation data.
+        Returns a pandas DataFrame of validation data.
         """
-        last_year = df.index[-1]
+        last_year = df["date"].iloc[-1]
         last3_years = pd.to_datetime(last_year) - pd.DateOffset(years=3) + pd.DateOffset(months=1)
 
         prediction = ml_model.get_prediction(start=pd.to_datetime(last3_years), dynamic=False)
+        prediction = prediction.predicted_mean.to_frame().reset_index()
 
         return prediction
 
-    def forecast(self, df: DataFrame, is_monthly: bool, ml_model) -> tuple(Series, Series):
+    def forecast(self, df: DataFrame, is_monthly: bool, ml_model) -> tuple(DataFrame, DataFrame):
         """
         Given a fitted model, it performs a forecast for the next harvesting year.
 
         - ml_model: A statsmodels SARIMA fitted model.
 
-        Returns a tuple of pandas Series: (last year values, forecasted values).
+        Returns a tuple of pandas DataFrame: (last year values, forecasted values).
         """
-        last_year = df.index[-1]
-        start_date = pd.to_datetime(last_year) + pd.DateOffset(months=1)
-        date_range = pd.date_range(start=start_date, periods=12, freq="MS")
-
         if is_monthly:
             forecast = ml_model.get_forecast(steps=1)
-            return df["yield_values"].iloc[-12], forecast.predicted_mean
+            return (df[["date", "yield_values"]].iloc[[-12]], forecast.predicted_mean.to_frame().reset_index())
 
         forecast = ml_model.get_forecast(steps=12)
-        forecast = forecast.predicted_mean
+        forecast = forecast.predicted_mean.to_frame().reset_index()
 
-        forecast.index = date_range
-
-        return (df["yield_values"].iloc[-12:], forecast)
+        return (df[["date", "yield_values"]].iloc[-12:], forecast)
 
     def fit(self, df: DataFrame, config: List[tuple]):
         """
@@ -122,12 +119,19 @@ class SARIMA(MLAlgorithm):
 
         Returns a list of tuples with parameters
         """
-        p_params = [0, 1, 2]
-        d_params = [0, 1]
-        q_params = [0, 1, 2, 3]
-        P_params = [0, 1, 2]
+        # p_params = [0, 1, 2]
+        # d_params = [0, 1]
+        # q_params = [0, 1, 2, 3]
+        # P_params = [0, 1, 2]
+        # D_params = [0, 1]
+        # Q_params = [0, 1, 2, 3]
+
+        p_params = [0]
+        d_params = [0]
+        q_params = [0]
+        P_params = [0]
         D_params = [0, 1]
-        Q_params = [0, 1, 2, 3]
+        Q_params = [0]
 
         configs = product(p_params, d_params, q_params, P_params, D_params, Q_params, [seasonality])
 
@@ -198,14 +202,14 @@ class Prophet(MLAlgorithm):
 
         return fit_model
 
-    def predict(self, df: DataFrame, ml_model) -> Series:
+    def predict(self, df: DataFrame, ml_model) -> DataFrame:
         """
         Given a fitted model and the data, it performs a prediction to obtain validation data
         for the last 3 years of harvesting.
 
         - ml_model: A fbprophet Prophet fitted model.
 
-        Returns a pandas series of validation data.
+        Returns a pandas DataFrame of validation data.
         """
         future = ml_model.make_future_dataframe(periods=12, freq="MS")
         prediction = ml_model.predict(future)
@@ -213,19 +217,20 @@ class Prophet(MLAlgorithm):
 
         return prediction
 
-    def forecast(self, df: DataFrame, is_monthly: bool, ml_model) -> tuple(Series, Series):
+    def forecast(self, df: DataFrame, is_monthly: bool, ml_model) -> tuple(DataFrame, DataFrame):
         """
         Given a fitted model, it performs a forecast for the next harvesting year.
 
         - ml_model: A fbprophet Prophet fitted model.
 
-        Returns a tuple of pandas Series: (last year values, forecasted values).
+        Returns a tuple of pandas DataFrame: (last year values, forecasted values).
         """
         future = ml_model.make_future_dataframe(periods=12, freq="MS")
         prediction = ml_model.predict(future)
         forecast = prediction[-12:][["ds", "yhat"]]
+        forecast = forecast.rename(columns={"ds": "date", "yhat": "yield_values"})
 
         if is_monthly:
-            return (df["yield_values"].iloc[-12], forecast[[0]])
+            return (df[["date", "yield_values"]].iloc[[-12]], forecast.iloc[[-12]])
 
-        return (df["yield_values"].iloc[-12:], forecast)
+        return (df[["date", "yield_values"]].iloc[-12:], forecast)

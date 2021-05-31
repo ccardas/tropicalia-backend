@@ -12,4 +12,6 @@ class Algorithm(BaseModel):
 
 
 class AlgorithmPrediction(Algorithm):
+    last_year_data: Dataset
     prediction: Dataset
+    forecast: Dataset

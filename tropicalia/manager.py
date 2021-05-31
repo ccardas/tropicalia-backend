@@ -145,14 +145,11 @@ class DatasetManager:
         """
         if not uid:
             uid = -1
-
         query = f"""
             SELECT * FROM dataset WHERE uid = {uid}
         """
-        print(query)
         row = await execute(query, DatasetRow, db)
 
-        print("HE ENCONTRADO ESTO!!     ", row)
         return row
 
 
@@ -170,12 +167,14 @@ class AlgorithmManager:
         """
         dataset = await DatasetManager().get(crop_type, current_user, db)
         df = pd.DataFrame(jsonable_encoder(dataset.data))
+        last_date = datetime.strptime(df["date"].iloc[-1], "%Y-%m-%d").date()
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index(["date"])
 
         logger.debug(f"User {current_user} has requested a trained {algorithm}/{crop_type} from the DB")
 
         alg = self.get_ml_algorithm(algorithm)
         trained_alg = alg().train(df)
-        last_date = datetime.strptime(df["date"].iloc[-1], "%Y-%m-%d").date()
         alg_obj = pickle.dumps(trained_alg)
 
         row_in_db = await self.insert_algorithm(algorithm, crop_type, last_date, alg_obj, db)
@@ -216,8 +215,9 @@ class AlgorithmManager:
 
         alg = self.get_ml_algorithm(algorithm)
         pred = alg().predict(df, alg_obj)
+        last_year_data, forecast = alg().forecast(df, is_monthly, alg_obj)
 
-        data = self.df_to_model(pred, trained_alg)
+        data = self.df_to_model(last_year_data, pred, forecast, trained_alg)
 
         if data:
             return data
@@ -235,25 +235,42 @@ class AlgorithmManager:
         else:
             return
 
-    def df_to_model(self, pred: DataFrame, algorithm: Algorithm) -> AlgorithmPrediction:
+    def df_to_model(
+        self, ly_data: DataFrame, pred: DataFrame, fc: DataFrame, algorithm: Algorithm
+    ) -> AlgorithmPrediction:
         """
         Given a pandas DataFrame, the algorithm, crop type and last date, it builds
         the pydantic `AlgorithmPrediction` model.
         """
-        data = []
+        data_ly = []
+        ly_len = len(ly_data)
+        for i in range(ly_len):
+            date, yield_values = ly_data.iloc[i].values
+            data_ly.append(DatasetRow(date=date, crop_type=algorithm.crop_type, yield_values=yield_values))
+        data_pred = []
         pred_len = len(pred)
         for i in range(pred_len):
             date, yield_values = pred.iloc[i].values
-            data.append(DatasetRow(date=date, crop_type=algorithm.crop_type, yield_values=yield_values))
+            data_pred.append(DatasetRow(date=date, crop_type=algorithm.crop_type, yield_values=yield_values))
 
-        prediction = Dataset(data=data)
+        data_fc = []
+        forecast_len = len(fc)
+        for i in range(forecast_len):
+            date, yield_values = fc.iloc[i].values
+            data_fc.append(DatasetRow(date=date, crop_type=algorithm.crop_type, yield_values=yield_values))
+
+        last_year_data = Dataset(data=data_ly)
+        prediction = Dataset(data=data_pred)
+        forecast = Dataset(data=data_fc)
 
         return AlgorithmPrediction(
             uid=algorithm.uid,
             algorithm=algorithm.algorithm,
             crop_type=algorithm.crop_type,
             last_date=algorithm.last_date,
+            last_year_data=last_year_data,
             prediction=prediction,
+            forecast=forecast,
         )
 
     async def insert_algorithm(
@@ -276,7 +293,7 @@ class AlgorithmManager:
         resource = self.minio.put_file(folder_name=row_in_db.last_date, file_name=row_in_db.uid, data=alg_obj)
         if resource:
             logger.debug(f"Algorithm {row_in_db.uid} has been succesfully uploaded, with path {resource.scheme}")
-            db.commit()
+            await db.commit()
             return row_in_db
 
     async def delete_algorithm(self):
