@@ -92,10 +92,9 @@ class Storage(ABC):
             shutil.rmtree(self.local_dir, ignore_errors=True)
 
     @abstractmethod
-    def remove_remote_dir(self, omit_files: List[str] = None) -> None:
+    def remove_object(self, scheme: str) -> None:
         """
-        Remove `task_dir` directory from remote storage.
-        If `omit_files`, remove `task_dir` directory's content from remote storage instead while keeping some files.
-        :param omit_files: List of filenames to keep.
+        Remove file under the `scheme` directory from remote storage.
+        :param scheme: Path of the file to remove.
         """
         pass

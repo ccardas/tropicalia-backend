@@ -189,11 +189,6 @@ class AlgorithmManager:
         """
         Loads the trained algorithm for the given crop and performs a prediction.
         """
-        # TODO
-        # Accessing the DB and querying for a specific algorithm and crop type should
-        # return (if trained) the ID for the object stored in MinIO.
-        # If the chosen combination (algorithm/crop_type) has not been trained before,
-        # an error should be raised and let know the user it must be trained.
         logger.debug(f"User {current_user} has requested a prediction with {algorithm}/{crop_type}")
 
         query = f"""

@@ -21,7 +21,6 @@ async def setup_database() -> Database:
 
     # TEAR DOWN
     await close_db_connection()
-    print("Closed DB connection")
 
 
 @pytest.fixture

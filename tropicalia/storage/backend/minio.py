@@ -1,7 +1,7 @@
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import List, Union
+from typing import Union
 
 from filelock import FileLock
 from minio import Minio
@@ -71,14 +71,14 @@ class MinIOStorage(Storage):
 
         return MinIOResource(resource=f"minio://{self.bucket_name}/{folder_name}/{file_name}")
 
-    def get_file(self, data_file: str) -> str:
+    def get_file(self, scheme: str) -> str:
         """
-        Given a MinIO path scheme it returns the local path for the downloaded file
+        Given a MinIO path scheme, it returns the local path for the downloaded file
         """
-        if not data_file.startswith("minio://"):
+        if not scheme.startswith("minio://"):
             raise NotValidScheme("Object file prefix is invalid: expected `minio://`")
 
-        bucket_name, object_name = data_file[len("minio://"):].split("/", 1)
+        bucket_name, object_name = scheme[len("minio://") :].split("/", 1)
 
         file_path = Path(self.temp_dir, bucket_name, object_name)
         file_path.parents[0].mkdir(parents=True, exist_ok=True)
@@ -99,9 +99,21 @@ class MinIOStorage(Storage):
 
         return str(file_path)
 
-    def remove_remote_dir(self, omit_files: List[str] = None) -> None:
-        # TODO
-        pass
+    def remove_object(self, scheme: str) -> MinIOResource:
+        """
+        Given a MinIO path scheme, it removes the file from MinIO.
+        """
+        if not scheme.startswith("minio://"):
+            raise NotValidScheme("Object file prefix is invalid: expected `minio://`")
+
+        bucket_name, object_name = scheme[len("minio://") :].split("/", 1)
+        try:
+            self.client.remove_object(bucket_name=bucket_name, object_name=object_name)
+        except S3Error as err:
+            logger.error(f"Could not remove file {object_name} from {self.bucket_name}")
+            logger.exception(err)
+
+        return MinIOResource(resource=scheme)
 
     def get_url(self, folder_name: Union[str, Path], file_name: str) -> MinIOResource:
         """
