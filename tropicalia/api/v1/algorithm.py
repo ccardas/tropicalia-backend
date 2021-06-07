@@ -13,6 +13,30 @@ router = APIRouter()
 
 
 @router.get(
+    "/check",
+    summary="Check whether the algorithm is trained",
+    tags=["algorithm"],
+    response_model=Algorithm,
+    response_description="Check whether the algorithm is trained",
+)
+async def check(
+    algorithm: str,
+    crop_type: str,
+    current_user: UserInDB = Depends(get_current_user),
+    db: Database = Depends(get_connection),
+) -> Algorithm:
+    """
+    It is checked whether the specified algorithm / crop type combination has been already trained.
+    """
+    data = await AlgorithmManager().check(algorithm, crop_type, current_user.username, db)
+
+    if not data:
+        raise HTTPException(status_code=404, detail="The specified combination has not been trained.")
+
+    return data
+
+
+@router.get(
     "/predict",
     summary="Algorithm prediction",
     tags=["algorithm"],

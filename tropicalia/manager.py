@@ -160,6 +160,23 @@ class AlgorithmManager:
 
     minio = MinIOStorage()
 
+    async def check(self, algorithm: str, crop_type: str, current_user: str, db: Database) -> Algorithm:
+        """
+        Given an algorithm and a crop type, it is checked in the DB whether the pair has been trained.
+        """
+        logger.debug(f"User {current_user} has requested whether {algorithm}/{crop_type} is trained from the DB")
+
+        query = f"""
+            SELECT uid, algorithm, crop_type, last_date
+            FROM algorithm
+            WHERE algorithm = '{algorithm}' AND crop_type = '{crop_type}'
+            ORDER BY uid DESC
+            LIMIT 1
+        """
+        trained_alg = await execute(query, Algorithm, db)
+
+        return trained_alg
+
     async def train(self, algorithm: str, crop_type: str, current_user: str, db: Database) -> Algorithm:
         """
         Given a crop type, it trains the algorithm for the according data.
@@ -190,14 +207,7 @@ class AlgorithmManager:
         """
         logger.debug(f"User {current_user} has requested a prediction with {algorithm}/{crop_type}")
 
-        query = f"""
-            SELECT uid, algorithm, crop_type, last_date
-            FROM algorithm
-            WHERE algorithm = '{algorithm}' AND crop_type = '{crop_type}'
-            ORDER BY uid DESC
-            LIMIT 1
-        """
-        trained_alg = await execute(query, Algorithm, db)
+        trained_alg = await self.check(algorithm, crop_type, current_user, db)
 
         try:
             dfs_path = self.minio.get_url(trained_alg.last_date, trained_alg.uid)
