@@ -1,6 +1,7 @@
 import uvicorn
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from tropicalia.database import close_db_connection, create_db_connection
 from tropicalia.config import settings
@@ -15,6 +16,15 @@ app.add_event_handler("shutdown", close_db_connection)
 app.include_router(user.router, prefix="/api/v1/auth")
 app.include_router(dataset.router, prefix="/api/v1/data")
 app.include_router(algorithm.router, prefix="/api/v1/algorithm")
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
