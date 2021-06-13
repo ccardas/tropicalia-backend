@@ -3,6 +3,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic.main import BaseModel
 from pandas import DataFrame
 
+import json
 import pickle
 from datetime import datetime
 
@@ -10,7 +11,7 @@ from tropicalia.algorithm import AlgorithmStack, MLAlgorithm, Prophet, SARIMA
 from tropicalia.database import Database
 from tropicalia.logger import get_logger
 from tropicalia.models.algorithm import Algorithm, AlgorithmPrediction
-from tropicalia.models.dataset import Dataset, DatasetRow
+from tropicalia.models.dataset import Dataset, DatasetRow, MonthRow, TableDataset
 from tropicalia.storage.backend.minio import MinIOStorage
 
 logger = get_logger(__name__)
@@ -41,13 +42,9 @@ async def execute_upsert(query: str, res_query: str, model: BaseModel, db: Datab
     Given the database it executes the query and returns the inserted/updated row.
     """
     try:
-        cur = await db.cursor()
-        await cur.execute(query)
-        last_rowid = cur.lastrowid
-        res_query = res_query.replace("placeholder", str(last_rowid))
-        res = await cur.execute(res_query)
+        await db.execute(query)
+        res = await db.execute(res_query)
         row = await res.fetchall()
-        await cur.close()
     except Exception as err:
         logger.debug(err)
         row = None
@@ -100,16 +97,16 @@ class DatasetManager:
                 UPDATE dataset
                 SET (date, crop_type, yield_values) =
                 ('{row.date}', '{row.crop_type}', '{row.yield_values}')
-                WHERE uid = {row.uid}
+                WHERE uid = '{row.uid}'
             """
         else:
             query = f"""
-                INSERT INTO dataset (date, crop_type, yield_values)
-                VALUES ('{row.date}', '{row.crop_type}', '{row.yield_values}')
+                INSERT INTO dataset (uid, date, crop_type, yield_values)
+                VALUES ('{row.uid}', '{row.date}', '{row.crop_type}', '{row.yield_values}')
             """
 
         res_query = f"""
-            SELECT * FROM dataset WHERE uid = 'placeholder'
+            SELECT * FROM dataset WHERE uid = '{row.uid}'
         """
         res = await execute_upsert(query, res_query, DatasetRow, db)
 
@@ -130,7 +127,7 @@ class DatasetManager:
         if row_in_db:
             query = f"""
                 DELETE FROM dataset
-                WHERE uid = {row.uid}
+                WHERE uid = '{row.uid}'
             """
             await execute(query, DatasetRow, db)
 
@@ -146,11 +143,82 @@ class DatasetManager:
         if not uid:
             uid = -1
         query = f"""
-            SELECT * FROM dataset WHERE uid = {uid}
+            SELECT * FROM dataset WHERE uid = '{uid}'
         """
         row = await execute(query, DatasetRow, db)
 
         return row
+
+    def get_table(self, daily_data: Dataset) -> TableDataset:
+        """
+        Given a daily data history, groups the data per month and returns a JSON object
+        with each month having the month's days as children.
+        """
+        monthly_data = self.get_monthly(daily_data).data
+        monthly_data = list(map(lambda row: row.dict(), monthly_data))
+        map(lambda row: row.pop("uid", None), monthly_data)
+
+        daily_data = list(map(lambda row: row.dict(), daily_data.data))
+
+        print(monthly_data)
+
+        for month_data in monthly_data:
+            year = month_data["date"].year
+            month = month_data["date"].month
+            crop_type = month_data["crop_type"]
+
+            data_in_month = [
+                x
+                for x in daily_data
+                if x["date"].year == year and x["date"].month == month and x["crop_type"] == crop_type
+            ]
+            month_data["children"] = data_in_month
+
+        monthly_data = sorted(monthly_data, key=lambda k: k["date"])
+        dataset_rows = [MonthRow(**row) for row in monthly_data]
+
+        return TableDataset(data=dataset_rows)
+
+    def get_monthly(self, daily_data: Dataset) -> Dataset:
+        """
+        Given a daily data history, returns the monthly sum for each crop
+        """
+        daily_data = [row.dict() for row in daily_data.data]
+        df_month = pd.DataFrame()
+        df_daily = pd.DataFrame()
+        df_daily = df_daily.from_dict(daily_data)
+        df_daily["date"] = pd.to_datetime(df_daily["date"])
+
+        crop_varieties = df_daily["crop_type"].unique()
+
+        for v in crop_varieties:
+            df_var = df_daily[df_daily["crop_type"] == v]
+            df_var = df_var.set_index("date").resample("MS").sum()
+            df_var["crop_type"] = v
+            df_var = df_var.reset_index()
+
+            df_month = pd.concat([df_month, df_var])
+
+        starting_date = min(df_daily["date"])
+        ending_date = max(df_daily["date"])
+        date_range = pd.date_range(start=starting_date, end=ending_date, freq="MS")
+
+        for date in date_range:
+            for v in crop_varieties:
+                res = df_month[df_month["date"] == date]["crop_type"] == v
+                # If there does NOT exists any row for the given date + crop type, append it as a new row
+                if len(res[res == True].index.values) == 0:
+                    df_month = df_month.append({"date": date, "crop_type": v, "yield_values": 0.0}, ignore_index=True)
+
+        df_month["date"] = df_month["date"].dt.strftime("%Y-%m-%d")
+        df_month = df_month[["date", "crop_type", "yield_values"]]
+        month_json = df_month.to_json(orient="table", index=False)
+        month_json = eval(month_json)
+        month_json = eval(json.dumps(month_json["data"]))
+
+        dataset_rows = [DatasetRow(**row) for row in month_json]
+
+        return Dataset(data=dataset_rows)
 
 
 class AlgorithmManager:
