@@ -1,3 +1,5 @@
+from typing import List, Union
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from tropicalia.auth import get_current_user
@@ -13,7 +15,7 @@ router = APIRouter()
 
 
 @router.get(
-    "/data",
+    "/get",
     summary="Get dataset from DB",
     tags=["data"],
     response_model=TableDataset,
@@ -36,28 +38,35 @@ async def get(
 
 
 @router.post(
-    "/data/upsert",
+    "/upsert",
     summary="Upsert data to DB",
     tags=["data"],
-    response_model=DatasetRow,
+    response_model=Union[List[DatasetRow], DatasetRow],
     response_description="Upsert data to DB",
 )
 async def upsert(
-    row: DatasetRow, current_user: UserInDB = Depends(get_current_user), db: Database = Depends(get_connection)
+    rows: Union[List[DatasetRow], DatasetRow],
+    current_user: UserInDB = Depends(get_current_user),
+    db: Database = Depends(get_connection),
 ) -> DatasetRow:
     """
     Inserts or updates existing row in the DB.
     """
-    upsert_row = await DatasetManager().upsert(row, current_user.username, db)
+    if isinstance(rows, list):
+        upsert_rows = [await DatasetManager().upsert(row, current_user.username, db, commit=False) for row in rows]
+        if None in upsert_rows:
+            raise HTTPException(status_code=404, detail="Upsert data error")
+        await DatasetManager().commit(db)
+    else:
+        upsert_rows = await DatasetManager().upsert(rows, current_user.username, db)
+        if not upsert_rows:
+            raise HTTPException(status_code=404, detail="Upsert data error")
 
-    if not upsert_row:
-        raise HTTPException(status_code=404, detail="Upsert data error")
-
-    return upsert_row
+    return upsert_rows
 
 
 @router.delete(
-    "/data/delete",
+    "/delete",
     summary="Delete row from DB",
     tags=["data"],
     response_model=DatasetRow,

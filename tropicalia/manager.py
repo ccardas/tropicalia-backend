@@ -1,11 +1,12 @@
+import json
+import pickle
+from datetime import datetime
+from secrets import token_hex
+
 import pandas as pd
 from fastapi.encoders import jsonable_encoder
 from pydantic.main import BaseModel
 from pandas import DataFrame
-
-import json
-import pickle
-from datetime import datetime
 
 from tropicalia.algorithm import AlgorithmStack, MLAlgorithm, Prophet, SARIMA
 from tropicalia.database import Database
@@ -84,7 +85,7 @@ class DatasetManager:
 
         return Dataset(data=dataset_rows)
 
-    async def upsert(self, row: DatasetRow, current_user: str, db: Database) -> DatasetRow:
+    async def upsert(self, row: DatasetRow, current_user: str, db: Database, commit: bool = True) -> DatasetRow:
         """
         Inserts or updates a row in the database given its id.
         """
@@ -108,7 +109,7 @@ class DatasetManager:
         res_query = f"""
             SELECT * FROM dataset WHERE uid = '{row.uid}'
         """
-        res = await execute_upsert(query, res_query, DatasetRow, db)
+        res = await execute_upsert(query, res_query, DatasetRow, db, commit)
 
         row_in_db = await self.find_one(res.uid, db)
         row.uid = row_in_db.uid
@@ -148,6 +149,12 @@ class DatasetManager:
         row = await execute(query, DatasetRow, db)
 
         return row
+
+    async def commit(self, db: Database):
+        """
+        Given the order, commits the current changes to the DB
+        """
+        await db.commit()
 
     def get_table(self, daily_data: Dataset) -> TableDataset:
         """
@@ -199,17 +206,7 @@ class DatasetManager:
 
             df_month = pd.concat([df_month, df_var])
 
-        starting_date = min(df_daily["date"])
-        ending_date = max(df_daily["date"])
-        date_range = pd.date_range(start=starting_date, end=ending_date, freq="MS")
-
-        for date in date_range:
-            for v in crop_varieties:
-                res = df_month[df_month["date"] == date]["crop_type"] == v
-                # If there does NOT exists any row for the given date + crop type, append it as a new row
-                if len(res[res == True].index.values) == 0:
-                    df_month = df_month.append({"date": date, "crop_type": v, "yield_values": 0.0}, ignore_index=True)
-
+        df_month = df_month[df_month["yield_values"] > 0.0]
         df_month["date"] = df_month["date"].dt.strftime("%Y-%m-%d")
         df_month = df_month[["date", "crop_type", "yield_values"]]
         month_json = df_month.to_json(orient="table", index=False)
@@ -357,13 +354,15 @@ class AlgorithmManager:
         """
         Auxiliar method to insert a new algorithm's info in the DB and to upload the object to MinIO
         """
+        uid = token_hex(4)
+
         query = f"""
-            INSERT INTO algorithm (algorithm, crop_type, last_date)
-            VALUES ('{algorithm}', '{crop_type}', '{last_date}')
+            INSERT INTO algorithm (uid, algorithm, crop_type, last_date)
+            VALUES ('{uid}', '{algorithm}', '{crop_type}', '{last_date}')
         """
 
         res_query = f"""
-            SELECT * FROM algorithm WHERE uid = 'placeholder'
+            SELECT * FROM algorithm WHERE uid = '{uid}'
         """
 
         row_in_db = await execute_upsert(query, res_query, Algorithm, db, commit=False)

@@ -5,7 +5,7 @@ from tropicalia.models.dataset import Dataset
 
 
 class Algorithm(BaseModel):
-    uid: int
+    uid: str
     algorithm: str
     crop_type: str
     last_date: date

@@ -28,8 +28,8 @@ async def get_user_by_username(username: str, db: Database) -> UserInDB:
 
     user = await res.fetchall()
 
-    user_dict = {key: user[0][i] for i, key in enumerate(UserInDB.__fields__.keys())}
     if user:
+        user_dict = {key: user[0][i] for i, key in enumerate(UserInDB.__fields__.keys())}
         return UserInDB(**user_dict)
 
 
@@ -45,8 +45,8 @@ async def get_user_by_email(email: str, db: Database) -> UserInDB:
 
     user = await res.fetchall()
 
-    user_dict = {key: user[0][i] for i, key in enumerate(UserInDB.__fields__.keys())}
     if user:
+        user_dict = {key: user[0][i] for i, key in enumerate(UserInDB.__fields__.keys())}
         return UserInDB(**user_dict)
 
 
