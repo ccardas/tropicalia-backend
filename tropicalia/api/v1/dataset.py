@@ -48,7 +48,7 @@ async def upsert(
     rows: Union[List[DatasetRow], DatasetRow],
     current_user: UserInDB = Depends(get_current_user),
     db: Database = Depends(get_connection),
-) -> DatasetRow:
+) -> Union[List[DatasetRow], DatasetRow]:
     """
     Inserts or updates existing row in the DB.
     """
@@ -81,6 +81,36 @@ async def delete(
     deleted_row = await DatasetManager().delete(row, current_user.username, db)
 
     if not deleted_row:
-        raise HTTPException(status_code=404, detail="Delete row error")
+        raise HTTPException(status_code=404, detail="Delete data error")
 
     return deleted_row
+
+
+@router.post(
+    "/apply",
+    summary="Apply changes to data to DB",
+    tags=["data"],
+    response_model=List[List[DatasetRow]],
+    response_description="Apply changes to data to DB",
+)
+async def apply(
+    changes: List[List[DatasetRow]],
+    current_user: UserInDB = Depends(get_current_user),
+    db: Database = Depends(get_connection),
+) -> List[List[DatasetRow]]:
+    """
+    Applies changes to rows in the DB.
+    """
+    upsert_rows, delete_rows = changes
+
+    upserted_rows = [await DatasetManager().upsert(row, current_user.username, db, commit=False) for row in upsert_rows]
+    if None in upserted_rows:
+        raise HTTPException(status_code=404, detail="Upsert data error")
+
+    deleted_rows = [await DatasetManager().delete(row, current_user.username, db, commit=False) for row in delete_rows]
+    if None in deleted_rows:
+        raise HTTPException(status_code=404, detail="Delete data error")
+
+    await DatasetManager().commit(db)
+
+    return [upsert_rows, deleted_rows]

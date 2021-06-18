@@ -90,7 +90,7 @@ class SARIMA(MLAlgorithm):
         forecast = ml_model.get_forecast(steps=12)
         forecast = forecast.predicted_mean.to_frame().reset_index()
 
-        return (df[["date", "yield_values"]].iloc[-12:], forecast)
+        return (df[["date", "yield_values"]].iloc[-36:], forecast)
 
     def fit(self, df: DataFrame, config: List[tuple]):
         """
@@ -233,4 +233,4 @@ class Prophet(MLAlgorithm):
         if is_monthly:
             return (df[["date", "yield_values"]].iloc[[-12]], forecast.iloc[[-12]])
 
-        return (df[["date", "yield_values"]].iloc[-12:], forecast)
+        return (df[["date", "yield_values"]].iloc[-36:], forecast)

@@ -117,7 +117,7 @@ class DatasetManager:
         if row_in_db == row:
             return row_in_db
 
-    async def delete(self, row: DatasetRow, current_user: str, db: Database) -> DatasetRow:
+    async def delete(self, row: DatasetRow, current_user: str, db: Database, commit: bool = True) -> DatasetRow:
         """
         Deletes a dataset entry in the database given its id.
         """
@@ -130,7 +130,7 @@ class DatasetManager:
                 DELETE FROM dataset
                 WHERE uid = '{row.uid}'
             """
-            await execute(query, DatasetRow, db)
+            await execute(query, DatasetRow, db, commit)
 
             row_in_db = await self.find_one(row.uid, db)
 
@@ -167,8 +167,6 @@ class DatasetManager:
 
         daily_data = list(map(lambda row: row.dict(), daily_data.data))
 
-        print(monthly_data)
-
         for month_data in monthly_data:
             year = month_data["date"].year
             month = month_data["date"].month
@@ -186,7 +184,7 @@ class DatasetManager:
 
         return TableDataset(data=dataset_rows)
 
-    def get_monthly(self, daily_data: Dataset) -> Dataset:
+    def get_monthly(self, daily_data: Dataset, models: bool = False) -> Dataset:
         """
         Given a daily data history, returns the monthly sum for each crop
         """
@@ -206,7 +204,21 @@ class DatasetManager:
 
             df_month = pd.concat([df_month, df_var])
 
-        df_month = df_month[df_month["yield_values"] > 0.0]
+        if models:
+            starting_date = min(df_daily["date"])
+            ending_date = max(df_daily["date"])
+            date_range = pd.date_range(start=starting_date, end=ending_date, freq="MS")
+            for date in date_range:
+                for v in crop_varieties:
+                    res = df_month[df_month["date"] == date]["crop_type"] == v
+                    # If there does NOT exists any row for the given date + crop type, append it as a new row
+                    if len(res[res == True].index.values) == 0:
+                        df_month = df_month.append(
+                            {"date": date, "crop_type": v, "yield_values": 0.0}, ignore_index=True
+                        )
+        else:
+            df_month = df_month[df_month["yield_values"] > 0.0]
+
         df_month["date"] = df_month["date"].dt.strftime("%Y-%m-%d")
         df_month = df_month[["date", "crop_type", "yield_values"]]
         month_json = df_month.to_json(orient="table", index=False)
@@ -235,7 +247,7 @@ class AlgorithmManager:
             SELECT uid, algorithm, crop_type, last_date
             FROM algorithm
             WHERE algorithm = '{algorithm}' AND crop_type = '{crop_type}'
-            ORDER BY uid DESC
+            ORDER BY last_date DESC
             LIMIT 1
         """
         trained_alg = await execute(query, Algorithm, db)
@@ -247,8 +259,10 @@ class AlgorithmManager:
         Given a crop type, it trains the algorithm for the according data.
         It stores the pickled trained algorithm's object into MinIO to reuse it for predictions.
         """
-        dataset = await DatasetManager().get(crop_type, current_user, db)
-        df = pd.DataFrame(jsonable_encoder(dataset.data))
+        daily_dataset = await DatasetManager().get(crop_type, current_user, db)
+        monthly_dataset = DatasetManager().get_monthly(daily_dataset, models=True)
+
+        df = pd.DataFrame(jsonable_encoder(monthly_dataset.data))
         last_date = datetime.strptime(df["date"].iloc[-1], "%Y-%m-%d").date()
         df["date"] = pd.to_datetime(df["date"])
         df = df.set_index(["date"])
@@ -285,12 +299,19 @@ class AlgorithmManager:
             logger.debug(err)
             return
 
-        dataset = await DatasetManager().get(crop_type, current_user, db)
-        df = pd.DataFrame(jsonable_encoder(dataset.data))
+        logger.debug(f"Selected trained model for prediction has uid: {trained_alg.uid}")
+
+        daily_dataset = await DatasetManager().get(crop_type, current_user, db)
+        monthly_dataset = DatasetManager().get_monthly(daily_dataset, models=True)
+        df = pd.DataFrame(jsonable_encoder(monthly_dataset.data))
 
         alg = self.get_ml_algorithm(algorithm)
-        pred = alg().predict(df, alg_obj)
         last_year_data, forecast = alg().forecast(df, is_monthly, alg_obj)
+
+        if is_monthly:
+            pred = forecast
+        else:
+            pred = alg().predict(df, alg_obj)
 
         data = self.df_to_model(last_year_data, pred, forecast, trained_alg)
 
@@ -356,6 +377,9 @@ class AlgorithmManager:
         """
         uid = token_hex(4)
 
+        # Previously trained algorithms for such combination are deleted.
+        await self.delete_algorithm(algorithm, crop_type, last_date, db)
+
         query = f"""
             INSERT INTO algorithm (uid, algorithm, crop_type, last_date)
             VALUES ('{uid}', '{algorithm}', '{crop_type}', '{last_date}')
@@ -373,9 +397,18 @@ class AlgorithmManager:
             await db.commit()
             return row_in_db
 
-    async def delete_algorithm(self):
+    async def delete_algorithm(self, algorithm: str, crop_type: str, last_date: datetime, db: Database):
         """
         Auxiliar method to delete records for an algorithm both from DB and MinIO
         """
+        # It is required to specify the date format, as SQL *WHEN QUERYING*
+        # internally does not appear to recognize datetime
+        delete_query = f"""
+            DELETE FROM algorithm
+            WHERE algorithm = '{algorithm}' AND crop_type = '{crop_type}' AND
+            last_date = '{last_date.strftime('%Y-%m-%d')}'
+        """
+        await execute(delete_query, Algorithm, db, commit=False)
 
         # TODO
+        # Delete from MinIO too.

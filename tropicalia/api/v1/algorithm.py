@@ -56,7 +56,7 @@ async def predict(
     data = await AlgorithmManager().predict(algorithm, crop_type, is_monthly, current_user.username, db)
 
     if not data:
-        raise HTTPException(status_code=404, detail="Data prediction failed, algorithm might not be trained")
+        raise HTTPException(status_code=404, detail="Data prediction failed")
 
     return data
 
