@@ -194,29 +194,20 @@ class DatasetManager:
         df_daily = df_daily.from_dict(daily_data)
         df_daily["date"] = pd.to_datetime(df_daily["date"])
 
-        crop_varieties = df_daily["crop_type"].unique()
-
-        for v in crop_varieties:
-            df_var = df_daily[df_daily["crop_type"] == v]
-            df_var = df_var.set_index("date").resample("MS").sum()
-            df_var["crop_type"] = v
-            df_var = df_var.reset_index()
-
-            df_month = pd.concat([df_month, df_var])
-
         if models:
-            starting_date = min(df_daily["date"])
-            ending_date = max(df_daily["date"])
-            date_range = pd.date_range(start=starting_date, end=ending_date, freq="MS")
-            for date in date_range:
-                for v in crop_varieties:
-                    res = df_month[df_month["date"] == date]["crop_type"] == v
-                    # If there does NOT exists any row for the given date + crop type, append it as a new row
-                    if len(res[res == True].index.values) == 0:
-                        df_month = df_month.append(
-                            {"date": date, "crop_type": v, "yield_values": 0.0}, ignore_index=True
-                        )
+            df_month = df_daily.set_index("date").resample("MS").sum()
+            df_month = df_month.reset_index()
+            df_month["crop_type"] = ""
         else:
+            crop_varieties = df_daily["crop_type"].unique()
+            for v in crop_varieties:
+                df_var = df_daily[df_daily["crop_type"] == v]
+                df_var = df_var.set_index("date").resample("MS").sum()
+                df_var["crop_type"] = v
+                df_var = df_var.reset_index()
+
+                df_month = pd.concat([df_month, df_var])
+
             df_month = df_month[df_month["yield_values"] > 0.0]
 
         df_month["date"] = df_month["date"].dt.strftime("%Y-%m-%d")

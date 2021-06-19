@@ -11,7 +11,7 @@ from tropicalia.models.user import UserInDB, UserCreateRequest
 
 SECRET_KEY = "b91a61d721b88f7e9fe8618e2e7e604663dc36ced6001d6a157bd391f604e07b"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 180
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
