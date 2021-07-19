@@ -119,19 +119,12 @@ class SARIMA(MLAlgorithm):
 
         Returns a list of tuples with parameters
         """
-        # p_params = [0, 1, 2]
-        # d_params = [0, 1]
-        # q_params = [0, 1, 2, 3]
-        # P_params = [0, 1, 2]
-        # D_params = [0, 1]
-        # Q_params = [0, 1, 2, 3]
-
-        p_params = [0]
-        d_params = [0]
-        q_params = [0]
-        P_params = [0]
+        p_params = [0, 1, 2]
+        d_params = [0, 1]
+        q_params = [0, 1, 2, 3]
+        P_params = [0, 1, 2]
         D_params = [0, 1]
-        Q_params = [0]
+        Q_params = [0, 1, 2, 3]
 
         configs = product(p_params, d_params, q_params, P_params, D_params, Q_params, [seasonality])
 

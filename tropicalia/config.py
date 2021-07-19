@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 class _Settings(BaseSettings):
     # API settings
-    API_HOST = "0.0.0.0"
+    API_HOST = "api"
     API_PORT = 8001
     API_DEBUG = 0
     API_KEY = "DEV"
@@ -20,10 +20,10 @@ class _Settings(BaseSettings):
     ROOT_PATH = ""
 
     # Database settings
-    DB_PATH = str(Path.home()) + "/.tropicalia/db.sqlite3"
+    DB_PATH = "/.tropicalia/db.sqlite3"
 
     # DFS
-    MINIO_HOST: str = "localhost"
+    MINIO_HOST: str = "minio"
     MINIO_PORT: int = 9000
     MINIO_ACCESS_KEY: str = "minio"
     MINIO_SECRET_KEY: str = "minio"

@@ -4,7 +4,7 @@ RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-
 
 ENV PATH="${PATH}:/root/.poetry/bin"
 
-RUN mkdir -p $HOME/.tropicalia/
+COPY db.sqlite3 /.tropicalia/
 
 WORKDIR /tropicalia
 COPY poetry.lock pyproject.toml /tropicalia/
