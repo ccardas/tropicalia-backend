@@ -14,4 +14,6 @@ RUN poetry config virtualenvs.create false \
 
 COPY . /tropicalia
 
+EXPOSE 8001
+
 CMD ["poetry", "run", "tropicalia"]

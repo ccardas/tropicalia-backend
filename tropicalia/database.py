@@ -14,7 +14,7 @@ db = Database()
 
 
 async def create_db_connection(path: str = settings.DB_PATH) -> Database:
-    logger.debug("Connecting to the Database.")
+    logger.debug("Connecting to the Database with path: " + path)
     db.client = await aiosqlite.connect(path)
     return db.client
 

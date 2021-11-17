@@ -28,7 +28,6 @@ class MinIOStorage(Storage):
             secure=False,
         )
         self.setup()
-
     def setup(self) -> MinIOResource:
 
         policy_read_only = {

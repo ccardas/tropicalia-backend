@@ -49,7 +49,7 @@ dmypy.json
 *.log.*
 
 # DB
-# *.sqlite3
+db.sqlite3
 populate_db.py
 
 # Pre-commit

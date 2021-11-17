@@ -7,7 +7,7 @@ from tropicalia.database import close_db_connection, create_db_connection
 from tropicalia.config import settings
 from tropicalia.api.v1 import user, dataset, algorithm
 
-app = FastAPI()
+app = FastAPI(root_path=settings.ROOT_PATH)
 
 
 app.add_event_handler("startup", create_db_connection)
