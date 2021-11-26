@@ -1,5 +1,6 @@
 import json
 import pickle
+import uuid
 from datetime import datetime
 from secrets import token_hex
 
@@ -62,6 +63,7 @@ class DatasetManager:
     """
     Class implementing the user's interaction with the dataset
     """
+    minio = MinIOStorage(bucket_name="excel")
 
     async def get(self, crop_type: str, current_user: str, db: Database) -> Dataset:
         """
@@ -220,6 +222,68 @@ class DatasetManager:
 
         return Dataset(data=dataset_rows)
 
+    async def update_xlsx(self, filename: str, current_user: str, db: Database) -> Dataset:
+        """
+        Given an excel file's name, it updates the DB with its data.
+        """
+        logger.debug(f"User {current_user} has requested a DB update with Excel data.")
+        try:
+            df = self.read_excel_minio(filename)
+        except Exception as err:
+            logger.debug(f"Error when reading {filename}")
+            logger.debug(err)
+            return     
+        # PANDAS DOES NOT SUPPORT AIOSQLITE CONNECTIONS. THUS, pd.read_sql IS AVOIDED
+        res = await db.execute("SELECT * FROM dataset")
+        res = await res.fetchall()
+        current_df = DataFrame(res, columns=["uid", "date", "crop_type", "yield_values"])
+        print("MIRA LOS DATOS ACTUALES ANTES DE MODIFICAR NADA", current_df)
+        print("DATOS NUEVOS QUE AÑADIR", df)
+        updated_df = pd.concat([current_df, df])
+        updated_df["date"] = pd.to_datetime(updated_df["date"])
+        updated_df["date"] = updated_df["date"].dt.strftime("%Y-%m-%d")
+        # Drop_duplicates with `keep="last"` drops ocurrences except the last one
+        # as concat does not sort, duplicated rows from `current_df` will be dropped
+        updated_df = updated_df.drop_duplicates(["date", "crop_type"], keep="last").reset_index(drop=True)
+        updated_df = updated_df.sort_values(["date", "crop_type"])
+        print("DATOS ACTUALIZADOS", updated_df)
+
+        await db.execute("DROP TABLE dataset")
+        await db.execute("CREATE TABLE dataset (uid TEXT PRIMARY KEY, date TEXT, crop_type TEXT, yield_values REAL)")
+
+        for row in updated_df.values:
+            query = f"""
+                    INSERT INTO dataset (uid, date, crop_type, yield_values)
+                    VALUES ('{row[0]}', '{row[1]}', '{row[2]}', '{row[3]}')
+                """
+            await db.execute(query)
+
+        df_json = updated_df.to_json(orient="table", index=False)
+        df_json = eval(df_json)
+        df_json = eval(json.dumps(df_json["data"]))
+        
+        dataset_rows = [DatasetRow(**row) for row in df_json]
+        return Dataset(data=dataset_rows)
+
+    def read_excel_minio(self, filename: str) -> DataFrame:
+        """
+        Finds in MinIO the excel file for the specified name and loads it into a pandas DataFrame.
+        """
+        try:
+            dfs_path = self.minio.get_url(file_name=filename)
+            excel_path = self.minio.get_file(dfs_path.resource)
+        except Exception as err:
+            logger.debug(f"Excel file {filename} was not found.")
+            logger.debug(err)
+            return
+
+        data = pd.read_excel(excel_path)
+        data = data.rename(columns = {"Fecha": "date", "Tipo de cultivo": "crop_type", "Kilos": "yield_values"})
+        data["uid"] = ""
+        uids = [str(uuid.uuid4()).split("-")[0] for _ in range(len(data))]
+        data["uid"] = uids
+
+        return data
 
 class AlgorithmManager:
     """
@@ -280,7 +344,7 @@ class AlgorithmManager:
         trained_alg = await self.check(algorithm, crop_type, current_user, db)
 
         try:
-            dfs_path = self.minio.get_url(trained_alg.last_date, trained_alg.uid)
+            dfs_path = self.minio.get_url(folder_name=trained_alg.last_date, file_name=trained_alg.uid)
             alg_path = self.minio.get_file(dfs_path.resource)
             with open(alg_path, mode="rb") as file:
                 b_obj = file.read()

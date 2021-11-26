@@ -1,7 +1,7 @@
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 
 from filelock import FileLock
 from minio import Minio
@@ -84,17 +84,16 @@ class MinIOStorage(Storage):
         file_lock = FileLock(str(file_path) + ".lock")  # avoid race: https://github.com/minio/minio-py/issues/854
 
         with file_lock:
-            if not file_path.is_file():
-                try:
-                    self.client.fget_object(
-                        bucket_name=bucket_name,
-                        object_name=object_name,
-                        file_path=(str(file_path)),
-                    )
-                except S3Error as err:
-                    logger.error(f"Could not get file {object_name} from {self.bucket_name}")
-                    logger.exception(err)
-                    raise
+            try:
+                self.client.fget_object(
+                    bucket_name=bucket_name,
+                    object_name=object_name,
+                    file_path=(str(file_path)),
+                )
+            except S3Error as err:
+                logger.error(f"Could not get file {object_name} from {self.bucket_name}")
+                logger.exception(err)
+                raise
 
         return str(file_path)
 
@@ -114,8 +113,11 @@ class MinIOStorage(Storage):
 
         return MinIOResource(resource=scheme)
 
-    def get_url(self, folder_name: Union[str, Path], file_name: str) -> MinIOResource:
+    def get_url(self, file_name: str, folder_name: Optional[Union[str, Path]] = None) -> MinIOResource:
         """
         From a folder name and a filename, returns the according MinIOResource object.
         """
-        return MinIOResource(resource=f"minio://{self.bucket_name}/{folder_name}/{file_name}")
+        if not folder_name:
+            return MinIOResource(resource=f"minio://{self.bucket_name}/{file_name}")
+        else:
+            return MinIOResource(resource=f"minio://{self.bucket_name}/{folder_name}/{file_name}")

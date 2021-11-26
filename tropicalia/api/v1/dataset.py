@@ -6,7 +6,7 @@ from tropicalia.auth import get_current_user
 from tropicalia.database import Database, get_connection
 from tropicalia.logger import get_logger
 from tropicalia.manager import DatasetManager
-from tropicalia.models.dataset import TableDataset, DatasetRow
+from tropicalia.models.dataset import TableDataset, DatasetRow, Dataset
 from tropicalia.models.user import UserInDB
 
 logger = get_logger(__name__)
@@ -114,3 +114,29 @@ async def apply(
     await DatasetManager().commit(db)
 
     return [upsert_rows, deleted_rows]
+
+
+@router.post(
+    "/update-xlsx",
+    summary="Updates the DB with values from an Excel file",
+    tags=["data"],
+    response_model=Dataset,
+    response_description="Apply changes to data to DB",
+)
+async def update_xlsx(
+    filename: str,
+    current_user: UserInDB = Depends(get_current_user),
+    db: Database = Depends(get_connection),
+) -> Dataset:
+    """
+    Given the filename of the Excel file, it downloads it from MinIO and updates the DB with the new data.
+    """
+
+    updated_rows = await DatasetManager().update_xlsx(filename, current_user.username, db)
+
+    if None in updated_rows:
+        raise HTTPException(status_code=404, detail="Error when updating dataset with the XLSX")
+
+    await DatasetManager().commit(db)
+
+    return updated_rows
