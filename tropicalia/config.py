@@ -10,29 +10,29 @@ logger = get_logger(__name__)
 
 class _Settings(BaseSettings):
     # API settings
-    API_HOST = "api"
-    API_PORT = 8001
-    API_DEBUG = 0
-    API_KEY = "DEV"
-    API_KEY_NAME = "access_token"
+    API_HOST: str = ""
+    API_PORT: int = 8002
+    API_DEBUG: int = 0
+    API_KEY: str = "DEV"
+    API_KEY_NAME: str = "access_token"
 
     # For applications sub-mounted below a given URL path
-    ROOT_PATH = ""
+    ROOT_PATH: str = ""
 
     # Database settings
-    DB_PATH = "/.tropicalia/db.sqlite3"
+    DB_PATH: str = "/.tropicalia/db.sqlite3"
 
     # DFS
-    MINIO_HOST: str = "minio"
-    MINIO_PORT: int = 9000
-    MINIO_ACCESS_KEY: str = "minio"
-    MINIO_SECRET_KEY: str = "minio"
+    MINIO_ENDPOINT: str = ""
+    MINIO_ACCESS_KEY: str = ""
+    MINIO_SECRET_KEY: str = ""
+    MINIO_USE_SSL: bool = False
 
     DATA_DIR: str = str(Path("/tmp" if platform.system() == "Darwin" else tempfile.gettempdir()))
 
     @property
     def MINIO_CONN(self):
-        return f"{self.MINIO_HOST}:{self.MINIO_PORT}"
+        return f"{self.MINIO_ENDPOINT}"
 
     class Config:
         env_file = ".env"

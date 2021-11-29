@@ -63,7 +63,7 @@ class DatasetManager:
     """
     Class implementing the user's interaction with the dataset
     """
-    minio = MinIOStorage(bucket_name="excel")
+    minio = MinIOStorage()
 
     async def get(self, crop_type: str, current_user: str, db: Database) -> Dataset:
         """
@@ -237,8 +237,7 @@ class DatasetManager:
         res = await db.execute("SELECT * FROM dataset")
         res = await res.fetchall()
         current_df = DataFrame(res, columns=["uid", "date", "crop_type", "yield_values"])
-        print("MIRA LOS DATOS ACTUALES ANTES DE MODIFICAR NADA", current_df)
-        print("DATOS NUEVOS QUE AÑADIR", df)
+
         updated_df = pd.concat([current_df, df])
         updated_df["date"] = pd.to_datetime(updated_df["date"])
         updated_df["date"] = updated_df["date"].dt.strftime("%Y-%m-%d")
@@ -246,7 +245,6 @@ class DatasetManager:
         # as concat does not sort, duplicated rows from `current_df` will be dropped
         updated_df = updated_df.drop_duplicates(["date", "crop_type"], keep="last").reset_index(drop=True)
         updated_df = updated_df.sort_values(["date", "crop_type"])
-        print("DATOS ACTUALIZADOS", updated_df)
 
         await db.execute("DROP TABLE dataset")
         await db.execute("CREATE TABLE dataset (uid TEXT PRIMARY KEY, date TEXT, crop_type TEXT, yield_values REAL)")
@@ -270,7 +268,7 @@ class DatasetManager:
         Finds in MinIO the excel file for the specified name and loads it into a pandas DataFrame.
         """
         try:
-            dfs_path = self.minio.get_url(file_name=filename)
+            dfs_path = self.minio.get_url(folder_name="excel", file_name=filename)
             excel_path = self.minio.get_file(dfs_path.resource)
         except Exception as err:
             logger.debug(f"Excel file {filename} was not found.")

@@ -19,13 +19,13 @@ class MinIOResource(Resource):
 
 
 class MinIOStorage(Storage):
-    def __init__(self, bucket_name: str = "algorithm"):
+    def __init__(self, bucket_name: str = "tropicalia"):
         super().__init__(bucket_name, folder_name="")
         self.client = Minio(
             settings.MINIO_CONN,
             access_key=settings.MINIO_ACCESS_KEY,
             secret_key=settings.MINIO_SECRET_KEY,
-            secure=False,
+            secure=settings.MINIO_USE_SSL,
         )
         self.setup()
     def setup(self) -> MinIOResource:
