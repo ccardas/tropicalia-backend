@@ -72,6 +72,7 @@ class SARIMA(MLAlgorithm):
 
         prediction = ml_model.get_prediction(start=pd.to_datetime(last3_years), dynamic=False)
         prediction = prediction.predicted_mean.to_frame().reset_index()
+        prediction["predicted_mean"] = prediction["predicted_mean"].apply(lambda x: x if x > 0 else 0)
 
         return prediction
 
@@ -89,6 +90,7 @@ class SARIMA(MLAlgorithm):
 
         forecast = ml_model.get_forecast(steps=12)
         forecast = forecast.predicted_mean.to_frame().reset_index()
+        forecast["predicted_mean"] = forecast["predicted_mean"].apply(lambda x: x if x > 0 else 0)
 
         return (df[["date", "yield_values"]].iloc[-36:], forecast)
 
@@ -207,6 +209,7 @@ class Prophet(MLAlgorithm):
         future = ml_model.make_future_dataframe(periods=12, freq="MS")
         prediction = ml_model.predict(future)
         prediction = prediction[-48:-12][["ds", "yhat"]]
+        prediction["yhat"] = prediction["yhat"].apply(lambda x: x if x > 0 else 0)
 
         return prediction
 
@@ -222,6 +225,7 @@ class Prophet(MLAlgorithm):
         prediction = ml_model.predict(future)
         forecast = prediction[-12:][["ds", "yhat"]]
         forecast = forecast.rename(columns={"ds": "date", "yhat": "yield_values"})
+        forecast["yield_values"] = forecast["yield_values"].apply(lambda x: x if x > 0 else 0) 
 
         if is_monthly:
             return (df[["date", "yield_values"]].iloc[[-12]], forecast.iloc[[-12]])
