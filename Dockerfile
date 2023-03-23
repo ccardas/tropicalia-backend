@@ -1,6 +1,9 @@
 FROM python:3.7-buster
 
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+#RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+ENV GET_POETRY_IGNORE_DEPRECATION=1
+
+RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/1.3/get-poetry.py | python 
 
 ENV PATH="${PATH}:/root/.poetry/bin"
 
